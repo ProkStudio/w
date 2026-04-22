@@ -58,6 +58,26 @@ async def create_item(
     return item
 
 
+async def update_item(
+    session: AsyncSession,
+    *,
+    item: Item,
+    title: str,
+    description: str,
+    price: Decimal,
+    content: str,
+    expires_at: datetime,
+) -> Item:
+    item.title = title.strip()
+    item.description = description.strip()
+    item.price = price
+    item.content = content.strip()
+    item.expires_at = expires_at
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
 async def delete_item_by_id(session: AsyncSession, item_id: int) -> bool:
     result = await session.execute(delete(Item).where(Item.id == item_id))
     await session.commit()

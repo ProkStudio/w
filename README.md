@@ -34,10 +34,14 @@ Copy `.env.example` to `.env` and fill:
 - `BOT_TOKEN`
 - `DATABASE_URL`
 - `ADMIN_ID`
+- `ADMIN_PASSWORD`
 - `CRYPTOBOT_TOKEN`
 - `CRYPTOBOT_ASSET` (default `USDT`)
 - `REFERRAL_PERCENT` (default `10`)
 - `STARS_TITLE`
+- `USD_RUB_FALLBACK` (default `95`) - fallback USD/RUB if rate API is unavailable
+- `USD_PER_STAR` (default `0.013`) - estimated USD cost of 1 Telegram Star for pricing
+- `RATE_CACHE_TTL_SEC` (default `600`) - rate cache lifetime in seconds
 
 ## Local run
 
@@ -69,3 +73,4 @@ Copy `.env.example` to `.env` and fill:
 - Bot prevents duplicate purchases (`user_id + item_id` unique constraint).
 - Only active items (`expires_at > now`) appear in catalog.
 - Payment callbacks validate payload and amount.
+- Admin enters item price in RUB; bot auto-converts to Stars/USDT at payment time.

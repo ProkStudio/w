@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
@@ -79,18 +79,25 @@ async def start_stars_payment(
         await callback.answer("Вы уже купили этот товар.", show_alert=True)
         return
 
+    try:
+        quote = await payment_service.build_pricing_quote(Decimal(item.price), settings)
+    except Exception:
+        logger.exception("Failed to build Stars quote")
+        await callback.answer("Не удалось рассчитать цену для Stars. Попробуйте позже.", show_alert=True)
+        return
+    stars_amount = quote.stars_amount
     payload = payment_service.build_invoice_payload(
         user_telegram_id=callback.from_user.id,
         item_id=item_id,
         secret=settings.bot_token,
+        quote_value=str(stars_amount),
     )
-    stars_amount = payment_service.to_stars_amount(Decimal(item.price))
     prices = [LabeledPrice(label=item.title[:32], amount=stars_amount)]
 
     await callback.bot.send_invoice(
         chat_id=callback.from_user.id,
         title=settings.stars_title[:32],
-        description=item.description[:255],
+        description=f"{item.description[:170]}\n\nЦена: {Decimal(item.price):.2f} RUB (~{stars_amount} ⭐)",
         payload=payload,
         currency="XTR",
         prices=prices,
@@ -113,13 +120,17 @@ async def process_pre_checkout(
         await pre_checkout_query.answer(ok=False, error_message="Некорректный payload")
         return
 
-    payload_user_id, item_id = payload_data
+    payload_user_id, item_id, payload_stars = payload_data
     item = await item_service.get_active_item_by_id(session, item_id)
     if item is None:
         await pre_checkout_query.answer(ok=False, error_message="Товар недоступен")
         return
 
-    expected_amount = payment_service.to_stars_amount(Decimal(item.price))
+    if payload_stars is None or not payload_stars.isdigit():
+        await pre_checkout_query.answer(ok=False, error_message="Некорректный payload")
+        return
+
+    expected_amount = int(payload_stars)
     if (
         pre_checkout_query.from_user.id != payload_user_id
         or pre_checkout_query.currency != "XTR"
@@ -149,7 +160,7 @@ async def successful_stars_payment(
         await message.answer("Ошибка подтверждения оплаты. Обратитесь в поддержку.")
         return
 
-    payload_user_id, item_id = payload_data
+    payload_user_id, item_id, payload_stars = payload_data
     if payload_user_id != message.from_user.id:
         logger.warning("Mismatched successful payment user")
         await message.answer("Ошибка подтверждения оплаты. Обратитесь в поддержку.")
@@ -160,7 +171,10 @@ async def successful_stars_payment(
         await message.answer("Товар не найден.")
         return
 
-    expected_amount = payment_service.to_stars_amount(Decimal(item.price))
+    if payload_stars is None or not payload_stars.isdigit():
+        await message.answer("Ошибка проверки payload оплаты.")
+        return
+    expected_amount = int(payload_stars)
     if (
         message.successful_payment.currency != "XTR"
         or message.successful_payment.total_amount != expected_amount
@@ -207,15 +221,23 @@ async def start_cryptobot_payment(
         await callback.answer("Вы уже купили этот товар.", show_alert=True)
         return
 
+    try:
+        quote = await payment_service.build_pricing_quote(Decimal(item.price), settings)
+    except Exception:
+        logger.exception("Failed to build CryptoBot quote")
+        await callback.answer("Не удалось рассчитать цену для CryptoBot. Попробуйте позже.", show_alert=True)
+        return
+    crypto_amount = quote.crypto_amount
     payload = payment_service.build_invoice_payload(
         user_telegram_id=callback.from_user.id,
         item_id=item_id,
         secret=settings.cryptobot_token,
+        quote_value=str(crypto_amount),
     )
     client = payment_service.CryptoBotClient(settings.cryptobot_token)
     try:
         invoice = await client.create_invoice(
-            amount=Decimal(item.price),
+            amount=crypto_amount,
             asset=settings.cryptobot_asset,
             description=f"{item.title} (item_id={item.id})",
             payload=payload,
@@ -226,7 +248,8 @@ async def start_cryptobot_payment(
         return
 
     await callback.message.edit_text(
-        "Счёт создан. Оплатите и нажмите Проверить оплату.",
+        f"Счёт создан.\nК оплате: {crypto_amount} {settings.cryptobot_asset} (~{Decimal(item.price):.2f} RUB)\n\n"
+        "Оплатите и нажмите Проверить оплату.",
         reply_markup=cryptobot_invoice_kb(invoice.pay_url, invoice.invoice_id, item.id),
     )
     await callback.answer()
@@ -266,16 +289,26 @@ async def check_cryptobot_payment(
         await callback.answer("Ошибка проверки платежа.", show_alert=True)
         return
 
-    payload_user_id, payload_item_id = payload_data
+    payload_user_id, payload_item_id, payload_crypto_amount = payload_data
     if payload_user_id != callback.from_user.id or payload_item_id != item_id:
         await callback.answer("Счёт не принадлежит вам.", show_alert=True)
+        return
+
+    if payload_crypto_amount is None:
+        await callback.answer("Некорректный payload счёта.", show_alert=True)
         return
 
     if invoice.status != "paid":
         await callback.answer("Оплата пока не подтверждена.", show_alert=True)
         return
 
-    if Decimal(invoice.amount) != Decimal(item.price):
+    try:
+        expected_crypto_amount = Decimal(payload_crypto_amount)
+    except InvalidOperation:
+        await callback.answer("Ошибка проверки суммы счёта.", show_alert=True)
+        return
+
+    if Decimal(invoice.amount) != expected_crypto_amount:
         await callback.answer("Неверная сумма в счёте.", show_alert=True)
         return
 

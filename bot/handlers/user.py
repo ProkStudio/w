@@ -38,7 +38,7 @@ def format_remaining_time(expires_at: datetime) -> str:
 
 
 def fmt_money(value: Decimal) -> str:
-    return f"{Decimal(value):.2f}"
+    return f"{Decimal(value):.2f} RUB"
 
 
 @router.message(CommandStart())

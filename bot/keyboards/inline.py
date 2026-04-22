@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -25,7 +27,10 @@ def back_to_main_kb() -> InlineKeyboardMarkup:
 def catalog_kb(items: list[Item]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for item in items:
-        builder.button(text=f"{item.title} - {item.price}", callback_data=f"item:{item.id}")
+        builder.button(
+            text=f"{item.title} - {Decimal(item.price):.2f} RUB",
+            callback_data=f"item:{item.id}",
+        )
     builder.button(text="⬅️ Назад", callback_data="menu:home")
     builder.adjust(1)
     return builder.as_markup()
@@ -70,6 +75,7 @@ def my_purchases_kb(purchases: list[Purchase]) -> InlineKeyboardMarkup:
 def admin_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Добавить товар", callback_data="admin:add_item")
+    builder.button(text="✏️ Изменить товар", callback_data="admin:edit_item_menu")
     builder.button(text="📋 Список товаров", callback_data="admin:list_items")
     builder.button(text="❌ Удалить товар", callback_data="admin:delete_item_menu")
     builder.adjust(1)
@@ -81,5 +87,30 @@ def delete_items_kb(items: list[Item]) -> InlineKeyboardMarkup:
     for item in items:
         builder.button(text=f"❌ {item.title}", callback_data=f"admin:delete_item:{item.id}")
     builder.button(text="⬅️ Назад", callback_data="admin:back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def edit_items_kb(items: list[Item]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for item in items:
+        builder.button(text=f"✏️ {item.title}", callback_data=f"admin:edit_item:{item.id}")
+    builder.button(text="⬅️ Назад", callback_data="admin:back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def item_form_kb(*, mode: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    prefix = "admin:create_field" if mode == "create" else "admin:edit_field"
+    save_action = "admin:create_save" if mode == "create" else "admin:edit_save"
+
+    builder.button(text="Название", callback_data=f"{prefix}:title")
+    builder.button(text="Описание", callback_data=f"{prefix}:description")
+    builder.button(text="Цена (RUB)", callback_data=f"{prefix}:price")
+    builder.button(text="Окончание", callback_data=f"{prefix}:expires_at")
+    builder.button(text="Контент", callback_data=f"{prefix}:content")
+    builder.button(text="✅ Сохранить", callback_data=save_action)
+    builder.button(text="❌ Отмена", callback_data="admin:form_cancel")
     builder.adjust(1)
     return builder.as_markup()
