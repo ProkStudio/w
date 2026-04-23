@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 class Settings:
     bot_token: str
     database_url: str
-    admin_id: int
+    admin_ids: frozenset[int]
     admin_password: str
     cryptobot_token: str
     cryptobot_asset: str
@@ -27,6 +27,7 @@ def load_settings() -> Settings:
 
     bot_token = os.getenv("BOT_TOKEN", "").strip()
     database_url = os.getenv("DATABASE_URL", "").strip()
+    admin_ids_raw = os.getenv("ADMIN_IDS", "").strip()
     admin_id_raw = os.getenv("ADMIN_ID", "").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "grihaeblan228").strip()
     cryptobot_token = os.getenv("CRYPTOBOT_TOKEN", "").strip()
@@ -41,8 +42,17 @@ def load_settings() -> Settings:
         raise ValueError("BOT_TOKEN is required")
     if not database_url:
         raise ValueError("DATABASE_URL is required")
-    if not admin_id_raw:
-        raise ValueError("ADMIN_ID is required")
+    admin_ids: set[int] = set()
+    if admin_ids_raw:
+        for chunk in admin_ids_raw.split(","):
+            value = chunk.strip()
+            if not value:
+                continue
+            admin_ids.add(int(value))
+    elif admin_id_raw:
+        admin_ids.add(int(admin_id_raw))
+    else:
+        raise ValueError("ADMIN_IDS or ADMIN_ID is required")
     if not admin_password:
         raise ValueError("ADMIN_PASSWORD is required")
     if not cryptobot_token:
@@ -51,7 +61,7 @@ def load_settings() -> Settings:
     return Settings(
         bot_token=bot_token,
         database_url=database_url,
-        admin_id=int(admin_id_raw),
+        admin_ids=frozenset(admin_ids),
         admin_password=admin_password,
         cryptobot_token=cryptobot_token,
         cryptobot_asset=cryptobot_asset,

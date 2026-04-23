@@ -33,7 +33,8 @@ Copy `.env.example` to `.env` and fill:
 
 - `BOT_TOKEN`
 - `DATABASE_URL`
-- `ADMIN_ID`
+- `ADMIN_IDS` (comma-separated, e.g. `12345,67890`)
+- `ADMIN_ID` (optional fallback for old config)
 - `ADMIN_PASSWORD`
 - `CRYPTOBOT_TOKEN`
 - `CRYPTOBOT_ASSET` (default `USDT`)

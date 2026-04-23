@@ -27,7 +27,7 @@ class ItemFormState(StatesGroup):
 
 
 def is_admin(user_id: int, settings: Settings) -> bool:
-    return user_id == settings.admin_id
+    return user_id in settings.admin_ids
 
 
 def is_authorized(user_id: int) -> bool:
