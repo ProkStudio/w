@@ -1,5 +1,7 @@
 from bot.keyboards.inline import (
     admin_menu_kb,
+    admin_items_scope_kb,
+    admin_list_items_pages_kb,
     back_to_main_kb,
     buy_methods_kb,
     catalog_kb,
@@ -18,6 +20,8 @@ __all__ = [
     "buy_methods_kb",
     "my_purchases_kb",
     "admin_menu_kb",
+    "admin_items_scope_kb",
+    "admin_list_items_pages_kb",
     "delete_items_kb",
     "edit_items_kb",
     "item_form_kb",

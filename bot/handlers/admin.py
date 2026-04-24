@@ -10,7 +10,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.keyboards.inline import admin_menu_kb, delete_items_kb, edit_items_kb, item_form_kb
+from bot.keyboards.inline import (
+    admin_items_scope_kb,
+    admin_list_items_pages_kb,
+    admin_menu_kb,
+    delete_items_kb,
+    edit_items_kb,
+    item_form_kb,
+)
 from config import Settings
 from services import items as item_service
 
@@ -273,7 +280,6 @@ async def admin_create_item_save(
 @router.callback_query(F.data == "admin:edit_item_menu")
 async def admin_edit_item_menu(
     callback: CallbackQuery,
-    session: AsyncSession,
     settings: Settings,
 ) -> None:
     if (
@@ -283,14 +289,9 @@ async def admin_edit_item_menu(
     ):
         await callback.answer("Недостаточно прав.", show_alert=True)
         return
-    all_items = await item_service.get_all_items(session)
-    if not all_items:
-        await callback.message.edit_text("Нет товаров для редактирования.", reply_markup=admin_menu_kb())
-        await callback.answer()
-        return
     await callback.message.edit_text(
-        "Выберите товар для редактирования:",
-        reply_markup=edit_items_kb(all_items),
+        "Выберите папку товаров для редактирования:",
+        reply_markup=admin_items_scope_kb("edit_item"),
     )
     await callback.answer()
 
@@ -391,7 +392,6 @@ async def admin_form_cancel(callback: CallbackQuery, state: FSMContext, settings
 @router.callback_query(F.data == "admin:list_items")
 async def admin_list_items(
     callback: CallbackQuery,
-    session: AsyncSession,
     settings: Settings,
 ) -> None:
     if (
@@ -402,26 +402,35 @@ async def admin_list_items(
         await callback.answer("Недостаточно прав.", show_alert=True)
         return
 
-    all_items = await item_service.get_all_items(session)
-    if not all_items:
-        await callback.message.edit_text("Список товаров пуст.", reply_markup=admin_menu_kb())
-        await callback.answer()
-        return
-
-    now = datetime.now(timezone.utc)
-    lines = ["📋 Товары:"]
-    for item in all_items:
-        status = "активен" if item.expires_at > now else "истёк"
-        lines.append(
-            f"#{item.id} | {item.title} | {Decimal(item.price):.2f} RUB | {item.expires_at.strftime('%Y-%m-%d %H:%M')} UTC | {status}"
-        )
-
-    await callback.message.edit_text("\n".join(lines), reply_markup=admin_menu_kb())
+    await callback.message.edit_text(
+        "Выберите папку товаров:",
+        reply_markup=admin_items_scope_kb("list_items"),
+    )
     await callback.answer()
 
 
 @router.callback_query(F.data == "admin:delete_item_menu")
 async def admin_delete_item_menu(
+    callback: CallbackQuery,
+    settings: Settings,
+) -> None:
+    if (
+        callback.message is None
+        or not is_admin(callback.from_user.id, settings)
+        or not is_authorized(callback.from_user.id)
+    ):
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "Выберите папку товаров для удаления:",
+        reply_markup=admin_items_scope_kb("delete_item"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:list_items_scope:"))
+async def admin_list_items_scope(
     callback: CallbackQuery,
     session: AsyncSession,
     settings: Settings,
@@ -434,16 +443,100 @@ async def admin_delete_item_menu(
         await callback.answer("Недостаточно прав.", show_alert=True)
         return
 
-    all_items = await item_service.get_all_items(session)
-    if not all_items:
-        await callback.message.edit_text("Нет товаров для удаления.", reply_markup=admin_menu_kb())
+    parts = callback.data.split(":")
+    scope = parts[-2]
+    page = int(parts[-1])
+    scoped_items = await item_service.get_items_by_scope(session, scope)
+    if not scoped_items:
+        await callback.message.edit_text("В этой папке товаров нет.", reply_markup=admin_menu_kb())
+        await callback.answer()
+        return
+
+    now = datetime.now(timezone.utc)
+    folder_name = {"active": "Активные", "archive": "Архивные", "all": "Все"}.get(scope, "Все")
+    page_size = 8
+    total_pages = max((len(scoped_items) + page_size - 1) // page_size, 1)
+    page = min(max(page, 1), total_pages)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_items = scoped_items[start:end]
+
+    lines = [f"📋 {folder_name} товары:"]
+    for item in page_items:
+        status = "активен" if item.expires_at > now else "истёк"
+        lines.append(
+            f"#{item.id} | {item.title} | {Decimal(item.price):.2f} RUB | {item.expires_at.strftime('%Y-%m-%d %H:%M')} UTC | {status}"
+        )
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=admin_list_items_pages_kb(scope, page, total_pages),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:edit_item_scope:"))
+async def admin_edit_item_scope(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    if (
+        callback.message is None
+        or not is_admin(callback.from_user.id, settings)
+        or not is_authorized(callback.from_user.id)
+    ):
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    scope = parts[-2]
+    page = int(parts[-1])
+    items = await item_service.get_items_by_scope(session, scope)
+    if not items:
+        await callback.message.edit_text("В этой папке нет товаров.", reply_markup=admin_menu_kb())
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        "Выберите товар для редактирования:",
+        reply_markup=edit_items_kb(items, scope=scope, page=page),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:delete_item_scope:"))
+async def admin_delete_item_scope(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    if (
+        callback.message is None
+        or not is_admin(callback.from_user.id, settings)
+        or not is_authorized(callback.from_user.id)
+    ):
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    scope = parts[-2]
+    page = int(parts[-1])
+    items = await item_service.get_items_by_scope(session, scope)
+    if not items:
+        await callback.message.edit_text("В этой папке нет товаров.", reply_markup=admin_menu_kb())
         await callback.answer()
         return
 
     await callback.message.edit_text(
         "Выберите товар для удаления:",
-        reply_markup=delete_items_kb(all_items),
+        reply_markup=delete_items_kb(items, scope=scope, page=page),
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:noop")
+async def admin_noop(callback: CallbackQuery) -> None:
     await callback.answer()
 
 

@@ -90,8 +90,35 @@ async def menu_catalog(callback: CallbackQuery, session: AsyncSession) -> None:
 
     await callback.message.edit_text(
         "Каталог активных товаров:",
-        reply_markup=catalog_kb(active_items),
+        reply_markup=catalog_kb(active_items, page=1),
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("menu:catalog:page:"))
+async def menu_catalog_page(callback: CallbackQuery, session: AsyncSession) -> None:
+    if callback.message is None:
+        return
+
+    active_items = await item_service.get_active_items(session)
+    if not active_items:
+        await callback.message.edit_text(
+            "Сейчас нет активных товаров.",
+            reply_markup=back_to_main_kb(),
+        )
+        await callback.answer()
+        return
+
+    page = int(callback.data.split(":")[-1])
+    await callback.message.edit_text(
+        "Каталог активных товаров:",
+        reply_markup=catalog_kb(active_items, page=page),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:catalog:noop")
+async def menu_catalog_noop(callback: CallbackQuery) -> None:
     await callback.answer()
 
 

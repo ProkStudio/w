@@ -79,6 +79,8 @@ async def update_item(
 
 
 async def delete_item_by_id(session: AsyncSession, item_id: int) -> bool:
+    # Remove dependent purchases first to avoid FK restriction errors.
+    await session.execute(delete(Purchase).where(Purchase.item_id == item_id))
     result = await session.execute(delete(Item).where(Item.id == item_id))
     await session.commit()
     return (result.rowcount or 0) > 0
@@ -134,3 +136,20 @@ async def count_active_items(session: AsyncSession) -> int:
 async def get_all_items(session: AsyncSession) -> list[Item]:
     result = await session.execute(select(Item).order_by(Item.created_at.desc()))
     return list(result.scalars().all())
+
+
+async def get_archived_items(session: AsyncSession) -> list[Item]:
+    result = await session.execute(
+        select(Item)
+        .where(Item.expires_at <= utc_now())
+        .order_by(Item.expires_at.desc(), Item.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_items_by_scope(session: AsyncSession, scope: str) -> list[Item]:
+    if scope == "active":
+        return await get_active_items(session)
+    if scope == "archive":
+        return await get_archived_items(session)
+    return await get_all_items(session)

@@ -8,6 +8,16 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.models import Item, Purchase
 
 
+def _slice_page[T](items: list[T], page: int, page_size: int) -> tuple[list[T], int]:
+    if page_size <= 0:
+        page_size = 5
+    total_pages = max((len(items) + page_size - 1) // page_size, 1)
+    page = min(max(page, 1), total_pages)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return items[start:end], total_pages
+
+
 def main_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🛍 Каталог", callback_data="menu:catalog")
@@ -24,15 +34,22 @@ def back_to_main_kb() -> InlineKeyboardMarkup:
     )
 
 
-def catalog_kb(items: list[Item]) -> InlineKeyboardMarkup:
+def catalog_kb(items: list[Item], page: int = 1, page_size: int = 6) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for item in items:
+    page_items, total_pages = _slice_page(items, page, page_size)
+    for item in page_items:
         builder.button(
             text=f"{item.title} - {Decimal(item.price):.2f} RUB",
             callback_data=f"item:{item.id}",
         )
+    if total_pages > 1:
+        if page > 1:
+            builder.button(text="◀️", callback_data=f"menu:catalog:page:{page - 1}")
+        builder.button(text=f"{page}/{total_pages}", callback_data="menu:catalog:noop")
+        if page < total_pages:
+            builder.button(text="▶️", callback_data=f"menu:catalog:page:{page + 1}")
     builder.button(text="⬅️ Назад", callback_data="menu:home")
-    builder.adjust(1)
+    builder.adjust(1, 3, 1)
     return builder.as_markup()
 
 
@@ -82,21 +99,47 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def delete_items_kb(items: list[Item]) -> InlineKeyboardMarkup:
+def delete_items_kb(
+    items: list[Item],
+    *,
+    scope: str,
+    page: int = 1,
+    page_size: int = 6,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for item in items:
+    page_items, total_pages = _slice_page(items, page, page_size)
+    for item in page_items:
         builder.button(text=f"❌ {item.title}", callback_data=f"admin:delete_item:{item.id}")
-    builder.button(text="⬅️ Назад", callback_data="admin:back")
-    builder.adjust(1)
+    if total_pages > 1:
+        if page > 1:
+            builder.button(text="◀️", callback_data=f"admin:delete_item_scope:{scope}:{page - 1}")
+        builder.button(text=f"{page}/{total_pages}", callback_data="admin:noop")
+        if page < total_pages:
+            builder.button(text="▶️", callback_data=f"admin:delete_item_scope:{scope}:{page + 1}")
+    builder.button(text="⬅️ К папкам", callback_data="admin:delete_item_menu")
+    builder.adjust(1, 3, 1)
     return builder.as_markup()
 
 
-def edit_items_kb(items: list[Item]) -> InlineKeyboardMarkup:
+def edit_items_kb(
+    items: list[Item],
+    *,
+    scope: str,
+    page: int = 1,
+    page_size: int = 6,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for item in items:
+    page_items, total_pages = _slice_page(items, page, page_size)
+    for item in page_items:
         builder.button(text=f"✏️ {item.title}", callback_data=f"admin:edit_item:{item.id}")
-    builder.button(text="⬅️ Назад", callback_data="admin:back")
-    builder.adjust(1)
+    if total_pages > 1:
+        if page > 1:
+            builder.button(text="◀️", callback_data=f"admin:edit_item_scope:{scope}:{page - 1}")
+        builder.button(text=f"{page}/{total_pages}", callback_data="admin:noop")
+        if page < total_pages:
+            builder.button(text="▶️", callback_data=f"admin:edit_item_scope:{scope}:{page + 1}")
+    builder.button(text="⬅️ К папкам", callback_data="admin:edit_item_menu")
+    builder.adjust(1, 3, 1)
     return builder.as_markup()
 
 
@@ -113,4 +156,27 @@ def item_form_kb(*, mode: str) -> InlineKeyboardMarkup:
     builder.button(text="✅ Сохранить", callback_data=save_action)
     builder.button(text="❌ Отмена", callback_data="admin:form_cancel")
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def admin_items_scope_kb(action: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📂 Активные", callback_data=f"admin:{action}_scope:active:1")
+    builder.button(text="🗃 Архивные", callback_data=f"admin:{action}_scope:archive:1")
+    builder.button(text="📦 Все", callback_data=f"admin:{action}_scope:all:1")
+    builder.button(text="⬅️ Назад", callback_data="admin:back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def admin_list_items_pages_kb(scope: str, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if total_pages > 1:
+        if page > 1:
+            builder.button(text="◀️", callback_data=f"admin:list_items_scope:{scope}:{page - 1}")
+        builder.button(text=f"{page}/{total_pages}", callback_data="admin:noop")
+        if page < total_pages:
+            builder.button(text="▶️", callback_data=f"admin:list_items_scope:{scope}:{page + 1}")
+    builder.button(text="⬅️ К папкам", callback_data="admin:list_items")
+    builder.adjust(3, 1)
     return builder.as_markup()
